@@ -1,0 +1,18 @@
+version: '3'
+services:
+  db:
+    image: mysql:8.4.2
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: "video_management"
+    ports:
+      - "3307:3306"
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=mysql+pymysql://root:root@db:3306/video_management
