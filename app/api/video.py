@@ -4,8 +4,13 @@ from app.models.video import Video
 import shutil
 import os
 import shutil
+from fastapi.responses import StreamingResponse
+import logging
 
 router = APIRouter()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @router.post("/upload/")
 async def upload_video(file: UploadFile, background_tasks: BackgroundTasks):
@@ -45,14 +50,29 @@ async def search_video(name: str = None, size: int = None):
 
 @router.get("/video/{video_id}")
 async def get_video(video_id: str):
+    # Check if the video is blocked
     if await VideoService.is_blocked(video_id):
         raise HTTPException(status_code=403, detail="This video is blocked for downloading")
     
+    # Get the video from the database
     video = await VideoService.get_video(video_id)
-    if not video:
+    video_path = video.path
+
+    # Check if the video file exists
+    if not os.path.exists(video_path):
         raise HTTPException(status_code=404, detail="Video not found")
+
+    # Use a context manager to handle file opening
+    def file_iterator(video_path):
+        with open(video_path, mode="rb") as file:
+            while chunk := file.read(8192):  # Read in 8KB chunks
+                yield chunk
+
+    # Return a streaming response to download the video with Content-Disposition header
+    response = StreamingResponse(file_iterator(video_path), media_type="video/mp4")
+    response.headers["Content-Disposition"] = f"attachment; filename={os.path.basename(video_path)}"
     
-    return {"video": video}
+    return response
 
 @router.put("/videos/{video_id}/block")
 async def block_video(video_id: str, block: bool):
